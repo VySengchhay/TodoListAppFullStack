@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: todoauth-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-todoauth}
+      POSTGRES_USER: ${DB_USERNAME:-todoauth}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-todoauth}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-todoauth}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: todoauth-mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025"   # web inbox - open http://localhost:8025
+      - "1025:1025"   # SMTP the backend sends to
+
+  backend:
+    build: .
+    container_name: todoauth-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-todoauth}
+      DB_USERNAME: ${DB_USERNAME:-todoauth}
+      DB_PASSWORD: ${DB_PASSWORD:-todoauth}
+      JWT_SECRET: ${JWT_SECRET:-change-this-dev-secret-change-this-dev-secret}
+      JWT_ACCESS_EXPIRY_MIN: ${JWT_ACCESS_EXPIRY_MIN:-15}
+      JWT_REFRESH_EXPIRY_DAYS: ${JWT_REFRESH_EXPIRY_DAYS:-30}
+      OTP_EXPIRY_MIN: ${OTP_EXPIRY_MIN:-10}
+      OTP_MAX_ATTEMPTS: ${OTP_MAX_ATTEMPTS:-5}
+      OTP_MAX_REQUESTS_PER_HOUR: ${OTP_MAX_REQUESTS_PER_HOUR:-5}
+      # Default: send to the local Mailpit inbox (http://localhost:8025).
+      # Set MAIL_CONSOLE_MODE=true in .env to log codes to the console instead.
+      MAIL_CONSOLE_MODE: ${MAIL_CONSOLE_MODE:-false}
+      MAIL_HOST: ${MAIL_HOST:-mailpit}
+      MAIL_PORT: ${MAIL_PORT:-1025}
+      MAIL_SMTP_AUTH: ${MAIL_SMTP_AUTH:-false}
+      MAIL_SMTP_STARTTLS: ${MAIL_SMTP_STARTTLS:-false}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@todoauth.local}
+    ports:
+      - "8080:8080"
+
+volumes:
+  postgres_data:
